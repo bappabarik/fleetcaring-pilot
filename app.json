@@ -1,0 +1,29 @@
+{
+  "expo": {
+    "name": "FleetCaring Pilot",
+    "slug": "fleetcaring-pilot",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": false,
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "FleetCaring needs your location while on duty so dispatch can route jobs to you and customers can see your ETA.",
+        "NSCameraUsageDescription": "FleetCaring needs camera access to capture pre/post-service vehicle photos."
+      }
+    },
+    "android": {
+      "permissions": ["ACCESS_FINE_LOCATION", "ACCESS_COARSE_LOCATION", "CAMERA"]
+    },
+    "plugins": [
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "FleetCaring needs your location while on duty so dispatch can route jobs to you."
+        }
+      ],
+      "expo-secure-store"
+    ]
+  }
+}
