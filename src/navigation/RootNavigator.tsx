@@ -3,7 +3,7 @@ import { View, ActivityIndicator } from "react-native";
 import { NavigationContainer } from "@react-navigation/native";
 import { useAuthStore } from "@/store/authStore";
 import { AuthNavigator } from "./AuthNavigator";
-import PlaceholderHomeScreen from "@/screens/home/PlaceholderHomeScreen";
+import { MainTabNavigator } from "./MainTabNavigator";
 
 export function RootNavigator() {
   const hydrated = useAuthStore((s) => s.hydrated);
@@ -22,5 +22,5 @@ export function RootNavigator() {
     );
   }
 
-  return <NavigationContainer>{refreshToken ? <PlaceholderHomeScreen /> : <AuthNavigator />}</NavigationContainer>;
+  return <NavigationContainer>{refreshToken ? <MainTabNavigator /> : <AuthNavigator />}</NavigationContainer>;
 }
