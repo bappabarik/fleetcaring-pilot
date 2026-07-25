@@ -7,8 +7,12 @@ import { shipmentsApi, type MyShipmentTaskCard } from "@/api/shipments";
 
 type Tab = "daily" | "weekly";
 
-function todayIsoDate(): string {
-  return new Date().toISOString().split("T")[0];
+export function todayIsoDate(): string {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }
 
 function isSameDay(iso: string, dateOnly: string): boolean {

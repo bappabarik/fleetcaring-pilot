@@ -6,38 +6,26 @@ import { useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { shiftsApi, type BreakReason } from "@/api/shifts";
 import { shipmentsApi } from "@/api/shipments";
-import { authApi } from "@/api/auth";
-import { useAuthStore } from "@/store/authStore";
+import { pilotsApi } from "@/api/pilots";
 import { Button } from "@/components/ui/Button";
-import { CountdownCircle } from "@/components/ui/CountdownCircle";
+import { ProgressRing } from "@/components/ui/ProgressRing";
+import { AssetCard, ZoneCard } from "@/components/home/DutyInfoCards";
 import { BreakReasonModal } from "@/components/home/BreakReasonModal";
 import { enqueueAction } from "@/offline/actionQueue";
 import { drainActionQueue } from "@/offline/syncEngine";
 import { useSyncStatus } from "@/offline/useSyncStatus";
-import { useCountdown, formatHoursMinutes, formatShiftDateTime, COUNTDOWN_DISPLAY_THRESHOLD_MS } from "@/lib/countdown";
-import type { HomeStackParamList } from "@/navigation/HomeStackNavigator";
 import { useLocationPing } from "@/realtime/useLocationPing";
-
-function InfoTile({ label, value }: { label: string; value: string }) {
-  return (
-    <View className="flex-1 rounded-xl bg-paper p-4">
-      <Text className="mb-1 text-xs text-slate-dark">{label}</Text>
-      <Text className="text-sm font-semibold text-ink">{value}</Text>
-    </View>
-  );
-}
-
-function todayIsoDate(): string {
-  return new Date().toISOString().split("T")[0];
-}
+import { useCountdown, formatHoursMinutes, formatShiftDateTime, COUNTDOWN_DISPLAY_THRESHOLD_MS } from "@/lib/countdown";
+import { todayIsoDate } from "@/lib/date";
+import type { HomeStackParamList } from "@/navigation/HomeStackNavigator";
 
 export default function HomeScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<HomeStackParamList>>();
   const queryClient = useQueryClient();
-  const refreshToken = useAuthStore((s) => s.refreshToken);
-  const clear = useAuthStore((s) => s.clear);
   const [breakModalVisible, setBreakModalVisible] = useState(false);
   const { pendingCount, failedCount } = useSyncStatus();
+
+  const profileQuery = useQuery({ queryKey: ["pilot-profile"], queryFn: pilotsApi.getMe });
 
   const dashboardQuery = useQuery({
     queryKey: ["pilot-dashboard"],
@@ -49,8 +37,6 @@ export default function HomeScreen() {
   const shift = dashboard?.shift ?? null;
   const isOnDuty = dashboard?.state === "ON_DUTY";
 
-  // Live location tracking runs whenever a shift is actually active —
-  // ON_DUTY or ON_BREAK — not before a shift starts or once it ends.
   useLocationPing(dashboard?.state === "ON_DUTY" || dashboard?.state === "ON_BREAK");
 
   const todaysJobsQuery = useQuery({
@@ -59,8 +45,6 @@ export default function HomeScreen() {
     enabled: isOnDuty,
   });
 
-  // console.log(todaysJobsQuery.data?.items);
-  
   const shiftCountdown = useCountdown(shift?.startTime ?? null);
   const breakCountdown = useCountdown(
     dashboard?.activeBreak
@@ -71,6 +55,10 @@ export default function HomeScreen() {
   );
 
   const withinStartWindow = shift ? shiftCountdown.totalMs <= COUNTDOWN_DISPLAY_THRESHOLD_MS : false;
+  const shiftProgress = withinStartWindow ? 1 - shiftCountdown.totalMs / COUNTDOWN_DISPLAY_THRESHOLD_MS : 0;
+  const breakProgress = dashboard?.activeBreak
+    ? 1 - breakCountdown.totalMs / (dashboard.activeBreak.durationAllowedMins * 60_000)
+    : 0;
 
   async function runQueuedAction(enqueue: () => Promise<string>) {
     await enqueue();
@@ -104,24 +92,13 @@ export default function HomeScreen() {
     );
   }
 
-  async function handleSignOut() {
-    if (refreshToken) {
-      try {
-        await authApi.logout(refreshToken);
-      } catch {
-        // Sign out locally regardless.
-      }
-    }
-    await clear();
-  }
-
   const content = useMemo(() => {
     if (!dashboard) return null;
 
     if (dashboard.state === "NO_SHIFT") {
       return (
         <View className="items-center pt-12">
-          <View className="h-56 w-56 items-center justify-center rounded-full border-[6px] border-slate-light self-center">
+          <View className="h-56 w-56 items-center justify-center self-center rounded-full border-[10px] border-slate-light/60">
             <Text className="text-lg font-semibold text-slate-dark">No shift</Text>
           </View>
         </View>
@@ -132,7 +109,7 @@ export default function HomeScreen() {
       if (!withinStartWindow) {
         return (
           <View className="items-center gap-6 pt-12">
-            <View className="h-56 w-56 items-center justify-center rounded-full border-[6px] border-slate-light self-center">
+            <View className="h-56 w-56 items-center justify-center self-center rounded-full border-[10px] border-slate-light/60">
               <Text className="text-lg font-semibold text-slate-dark">No shift</Text>
             </View>
             <View className="w-full flex-row items-center gap-3 rounded-xl bg-paper p-4">
@@ -147,12 +124,15 @@ export default function HomeScreen() {
       }
 
       return (
-        <View className="gap-6 pt-8">
-          <CountdownCircle label="Shift starts in" value={formatHoursMinutes(shiftCountdown.totalMs)} />
+        <View className="gap-6 pt-4">
+          <ProgressRing label="Shift starts in" value={formatHoursMinutes(shiftCountdown.totalMs)} progress={shiftProgress} />
           <Button label="Start shift" onPress={handleStartShift} />
+          <Text className="rounded-lg bg-ink px-4 py-3 text-center text-sm text-white">
+            After starting your shift, kindly make sure to leave the depot as soon as possible.
+          </Text>
           <View className="flex-row gap-3">
-            <InfoTile label="Assigned asset" value={shift.asset?.plateCode ?? "—"} />
-            <InfoTile label="Assigned zone" value={shift.zone?.name ?? "—"} />
+            <AssetCard plateCode={shift.asset?.plateCode ?? "—"} />
+            <ZoneCard zoneName={shift.zone?.name ?? "—"} />
           </View>
         </View>
       );
@@ -160,18 +140,10 @@ export default function HomeScreen() {
 
     if (dashboard.state === "ON_DUTY" && shift) {
       return (
-        <View className="gap-6 pt-4">
-          <View className="flex-row items-center justify-between rounded-xl bg-paper p-4">
-            <Text className="font-semibold text-ink">On duty</Text>
-            <Switch
-              value={true}
-              onValueChange={() => setBreakModalVisible(true)}
-              trackColor={{ true: "#3652D9", false: "#C3C9D6" }}
-            />
-          </View>
+        <View className="gap-6">
           <View className="flex-row gap-3">
-            <InfoTile label="Assigned asset" value={shift.asset?.plateCode ?? "—"} />
-            <InfoTile label="Assigned zone" value={shift.zone?.name ?? "—"} />
+            <AssetCard plateCode={shift.asset?.plateCode ?? "—"} />
+            <ZoneCard zoneName={shift.zone?.name ?? "—"} />
           </View>
 
           <View>
@@ -217,7 +189,7 @@ export default function HomeScreen() {
     if (dashboard.state === "ON_BREAK" && dashboard.activeBreak) {
       return (
         <View className="items-center gap-6 pt-8">
-          <CountdownCircle label="Break remaining" value={formatHoursMinutes(breakCountdown.totalMs)} />
+          <ProgressRing label="Break remaining" value={formatHoursMinutes(breakCountdown.totalMs)} progress={breakProgress} />
           <Button label="End break" onPress={handleEndBreak} />
         </View>
       );
@@ -230,12 +202,24 @@ export default function HomeScreen() {
   return (
     <SafeAreaView className="flex-1 bg-white">
       <ScrollView className="flex-1 px-6 pt-4" contentContainerClassName="pb-10">
-        <View className="mb-4 flex-row items-center justify-between">
-          <Text className="text-xl font-bold text-ink">Home</Text>
-          <Text onPress={handleSignOut} className="text-sm font-medium text-rust">
-            Sign out
-          </Text>
-        </View>
+        {isOnDuty && profileQuery.data && (
+          <View className="mb-6 flex-row items-center justify-between">
+            <View className="flex-row items-center gap-3">
+              <View className="h-11 w-11 items-center justify-center rounded-full bg-indigo/10">
+                <Text className="font-bold text-indigo">{profileQuery.data.firstName[0]}</Text>
+              </View>
+              <Text className="font-semibold text-ink">{profileQuery.data.code}</Text>
+            </View>
+            <View className="flex-row items-center gap-2">
+              <Text className="font-medium text-ink">On duty</Text>
+              <Switch
+                value={true}
+                onValueChange={() => setBreakModalVisible(true)}
+                trackColor={{ true: "#3652D9", false: "#C3C9D6" }}
+              />
+            </View>
+          </View>
+        )}
 
         {failedCount > 0 && (
           <Text
