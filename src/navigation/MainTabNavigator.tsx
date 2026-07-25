@@ -2,7 +2,7 @@ import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { Home, Calendar, HelpCircle } from "lucide-react-native";
 import { HomeStackNavigator } from "./HomeStackNavigator";
 import ScheduleScreen from "@/screens/schedule/ScheduleScreen";
-import SupportScreen from "@/screens/support/SupportScreen";
+import { SupportStackNavigator } from "./SupportStackNavigator";
 
 const Tab = createBottomTabNavigator();
 
@@ -27,7 +27,7 @@ export function MainTabNavigator() {
       />
       <Tab.Screen
         name="Support"
-        component={SupportScreen}
+        component={SupportStackNavigator}
         options={{ tabBarIcon: ({ color, size }) => <HelpCircle color={color} size={size} /> }}
       />
     </Tab.Navigator>

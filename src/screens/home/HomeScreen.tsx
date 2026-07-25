@@ -16,6 +16,7 @@ import { drainActionQueue } from "@/offline/syncEngine";
 import { useSyncStatus } from "@/offline/useSyncStatus";
 import { useCountdown, formatHoursMinutes, formatShiftDateTime, COUNTDOWN_DISPLAY_THRESHOLD_MS } from "@/lib/countdown";
 import type { HomeStackParamList } from "@/navigation/HomeStackNavigator";
+import { useLocationPing } from "@/realtime/useLocationPing";
 
 function InfoTile({ label, value }: { label: string; value: string }) {
   return (
@@ -47,6 +48,10 @@ export default function HomeScreen() {
   const dashboard = dashboardQuery.data;
   const shift = dashboard?.shift ?? null;
   const isOnDuty = dashboard?.state === "ON_DUTY";
+
+  // Live location tracking runs whenever a shift is actually active —
+  // ON_DUTY or ON_BREAK — not before a shift starts or once it ends.
+  useLocationPing(dashboard?.state === "ON_DUTY" || dashboard?.state === "ON_BREAK");
 
   const todaysJobsQuery = useQuery({
     queryKey: ["my-shipments", todayIsoDate()],
