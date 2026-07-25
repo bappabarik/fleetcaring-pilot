@@ -1,11 +1,11 @@
-import { View, Text, ScrollView, Linking, Alert } from "react-native";
+import { View, Text, ScrollView, Linking, Alert, Pressable } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRoute, useNavigation, type RouteProp } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ordersApi } from "@/api/orders";
 import { Button } from "@/components/ui/Button";
-import { enqueueAction } from "@/offline/actionQueue";
+import { enqueueAction, getActionById } from "@/offline/actionQueue";
 import { drainActionQueue } from "@/offline/syncEngine";
 import type { HomeStackParamList } from "@/navigation/HomeStackNavigator";
 
@@ -14,6 +14,10 @@ function deriveOrderStage(statuses: string[]): "not_started" | "enroute" | "arri
   if (statuses.every((s) => s === "ON_THE_WAY")) return "enroute";
   if (statuses.every((s) => s === "ARRIVED")) return "arrived";
   return "in_progress_or_beyond";
+}
+
+function allItemsResolved(statuses: string[]): boolean {
+  return statuses.every((s) => s === "COMPLETED" || s === "ISSUE_RAISED");
 }
 
 export default function OrderDetailScreen() {
@@ -28,13 +32,18 @@ export default function OrderDetailScreen() {
   });
 
   const order = orderQuery.data;
-  const stage = order ? deriveOrderStage(order.shipments.map((s) => s.status)) : "not_started";
+  const statuses = order?.shipments.map((s) => s.status) ?? [];
+  const stage = order ? deriveOrderStage(statuses) : "not_started";
+  const shipmentsAreTappable = stage === "arrived" || stage === "in_progress_or_beyond";
+  const canRaiseIssue = stage === "arrived" || stage === "in_progress_or_beyond";
+  const canComplete = stage === "in_progress_or_beyond" && allItemsResolved(statuses) && !order?.completedAt;
 
   async function runQueuedAction(enqueue: () => Promise<string>) {
-    await enqueue();
+    const actionId = await enqueue();
     await drainActionQueue();
     queryClient.invalidateQueries({ queryKey: ["order", orderId] });
     queryClient.invalidateQueries({ queryKey: ["my-shipments"] });
+    return actionId;
   }
 
   function handleEnroute() {
@@ -57,6 +66,27 @@ export default function OrderDetailScreen() {
   function handleCallCustomer() {
     if (!order?.user?.phoneNumber) return;
     Linking.openURL(`tel:${order.user.phoneNumber}`);
+  }
+
+  async function handleCompleteOrder() {
+    Alert.alert("Complete this order?", "Make sure every item is completed or has an issue raised first.", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Complete",
+        onPress: async () => {
+          const actionId = await runQueuedAction(() => enqueueAction("COMPLETE_ORDER", { orderId }));
+          const stillQueued = await getActionById(actionId);
+          if (stillQueued) {
+            Alert.alert(
+              "Still syncing",
+              stillQueued.status === "failed"
+                ? stillQueued.errorMessage ?? "This couldn't be completed. Check Sync issues to retry."
+                : "You're offline — this will complete automatically once reconnected."
+            );
+          }
+        },
+      },
+    ]);
   }
 
   if (orderQuery.isLoading || !order) {
@@ -92,22 +122,38 @@ export default function OrderDetailScreen() {
 
         <Text className="mb-2 font-semibold text-ink">Vehicles</Text>
         <View className="mb-6 gap-2">
-          {order.shipments.map((shipment) => (
-            <View key={shipment.id} className="rounded-xl border border-slate-light/60 p-3">
-              <View className="flex-row items-center justify-between">
-                <Text className="font-medium text-ink">
-                  {shipment.vehicle ? `${shipment.vehicle.make} ${shipment.vehicle.model}` : "—"}
-                </Text>
-                <Text className="font-mono text-xs text-slate-dark">{shipment.vehicle?.licensePlate}</Text>
+          {order.shipments.map((shipment) => {
+            const row = (
+              <View className="rounded-xl border border-slate-light/60 p-3">
+                <View className="flex-row items-center justify-between">
+                  <Text className="font-medium text-ink">
+                    {shipment.vehicle ? `${shipment.vehicle.make} ${shipment.vehicle.model}` : "—"}
+                  </Text>
+                  <Text className="font-mono text-xs text-slate-dark">{shipment.vehicle?.licensePlate}</Text>
+                </View>
+                <Text className="text-sm text-slate-dark">{shipment.itemVariation?.name ?? "—"}</Text>
+                {shipment.addOns.length > 0 && (
+                  <Text className="mt-1 text-xs text-slate-dark">
+                    + {shipment.addOns.map((a) => a.itemVariation?.name).filter(Boolean).join(", ")}
+                  </Text>
+                )}
+                {shipmentsAreTappable && (
+                  <Text className="mt-1 text-xs font-medium text-indigo">{shipment.status.replaceAll("_", " ")}</Text>
+                )}
               </View>
-              <Text className="text-sm text-slate-dark">{shipment.itemVariation?.name ?? "—"}</Text>
-              {shipment.addOns.length > 0 && (
-                <Text className="mt-1 text-xs text-slate-dark">
-                  + {shipment.addOns.map((a) => a.itemVariation?.name).filter(Boolean).join(", ")}
-                </Text>
-              )}
-            </View>
-          ))}
+            );
+
+            return shipmentsAreTappable ? (
+              <Pressable
+                key={shipment.id}
+                onPress={() => navigation.navigate("ShipmentDetail", { orderId, shipmentId: shipment.id })}
+              >
+                {row}
+              </Pressable>
+            ) : (
+              <View key={shipment.id}>{row}</View>
+            );
+          })}
         </View>
 
         {stage === "not_started" && <Button label="Enroute" onPress={handleEnroute} />}
@@ -119,12 +165,32 @@ export default function OrderDetailScreen() {
           </View>
         )}
 
-        {stage === "arrived" && <Button label="Contact customer" variant="secondary" onPress={handleCallCustomer} />}
-
-        {stage === "in_progress_or_beyond" && (
-          <Text className="text-center text-sm text-slate-dark">
-            Pre-checks and in-progress work aren't built yet — that's the next build step.
-          </Text>
+        {(stage === "arrived" || stage === "in_progress_or_beyond") && (
+          <View className="gap-3">
+            {!order.completedAt && (
+              <Button
+                label="Complete order"
+                disabled={!canComplete}
+                onPress={handleCompleteOrder}
+              />
+            )}
+            <View className="flex-row gap-3">
+              <Button label="Contact customer" variant="secondary" onPress={handleCallCustomer} className="flex-1" />
+              {canRaiseIssue && (
+                <Button
+                  label="Raise an issue"
+                  variant="secondary"
+                  onPress={() => navigation.navigate("RaiseIssue", { orderId })}
+                  className="flex-1"
+                />
+              )}
+            </View>
+            {!canComplete && !order.completedAt && (
+              <Text className="text-center text-xs text-slate-dark">
+                Every item must be completed or have an issue raised before this order can be completed.
+              </Text>
+            )}
+          </View>
         )}
       </ScrollView>
     </SafeAreaView>

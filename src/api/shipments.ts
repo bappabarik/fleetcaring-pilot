@@ -46,7 +46,19 @@ export interface ListMyShipmentsParams {
   cursor?: string;
 }
 
+export interface CheckSubmissionBody {
+  photoUrls: string[];
+  notes?: string;
+}
+
 export const shipmentsApi = {
   listMine: (params: ListMyShipmentsParams) =>
     apiRequest<{ items: MyShipmentTaskCard[]; nextCursor: string | null }>("/shipments/mine", { query: params }),
+
+  submitPreCheck: (shipmentId: string, body: CheckSubmissionBody, idempotencyKey: string) =>
+  apiRequest(`/shipments/${shipmentId}/pre-check`, { method: "POST", body, idempotencyKey }),
+
+  submitPostCheck: (shipmentId: string, body: CheckSubmissionBody, idempotencyKey: string) =>
+    apiRequest(`/shipments/${shipmentId}/post-check`, { method: "POST", body, idempotencyKey }),
 };
+

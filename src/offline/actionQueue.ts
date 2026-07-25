@@ -1,10 +1,30 @@
 import { getDb } from "./db";
 import { generateIdempotencyKey } from "@/lib/uuid";
 import { shiftsApi, type BreakReason } from "@/api/shifts";
-import { ordersApi } from "@/api/orders";
+import { ordersApi, type IssueReason } from "@/api/orders";
+import { shipmentsApi } from "@/api/shipments";
+import { getPhotoById } from "./photoQueue";
 
 export type ActionStatus = "pending" | "in_flight" | "failed";
-export type ActionType = "START_SHIFT" | "END_SHIFT" | "START_BREAK" | "END_BREAK" | "ENROUTE_ORDER" | "CONFIRM_ARRIVAL";
+
+export class PhotosNotReadyError extends Error {
+    constructor() {
+        super("Referenced photos haven't finished uploading yet");
+        this.name = "PhotosNotReadyError";
+    }
+}
+
+export type ActionType =
+    | "START_SHIFT"
+    | "END_SHIFT"
+    | "START_BREAK"
+    | "END_BREAK"
+    | "ENROUTE_ORDER"
+    | "CONFIRM_ARRIVAL"
+    | "SUBMIT_PRE_CHECK"
+    | "SUBMIT_POST_CHECK"
+    | "RAISE_ISSUE"
+    | "COMPLETE_ORDER";
 
 interface ActionPayloads {
     START_SHIFT: { shiftId: string };
@@ -13,6 +33,16 @@ interface ActionPayloads {
     END_BREAK: { shiftId: string; breakId: string };
     ENROUTE_ORDER: { orderId: string };
     CONFIRM_ARRIVAL: { orderId: string };
+    SUBMIT_PRE_CHECK: { shipmentId: string; photoQueueIds: string[]; notes?: string };
+    SUBMIT_POST_CHECK: { shipmentId: string; photoQueueIds: string[]; notes?: string };
+    RAISE_ISSUE: {
+        orderId: string;
+        shipmentId?: string;
+        reason: IssueReason;
+        notes?: string;
+        photoQueueIds: string[];
+    };
+    COMPLETE_ORDER: { orderId: string };
 }
 
 export interface QueuedAction<T extends ActionType = ActionType> {
@@ -61,6 +91,14 @@ export async function getPendingActions(): Promise<QueuedAction[]> {
     return rows.map(rowToAction);
 }
 
+export async function hasPendingActionMatching<T extends ActionType>(
+    actionType: T,
+    matches: (payload: ActionPayloads[T]) => boolean
+): Promise<boolean> {
+    const pending = await getPendingActions();
+    return pending.some((a) => a.actionType === actionType && matches(a.payload as ActionPayloads[T]));
+}
+
 export async function getFailedActions(): Promise<QueuedAction[]> {
     const db = await getDb();
     const rows = await db.getAllAsync<ActionQueueRow>(
@@ -85,6 +123,24 @@ export async function retryAction(id: string) {
 
 export async function discardAction(id: string) {
     await deleteAction(id);
+}
+
+async function resolvePhotoUrls(photoQueueIds: string[]): Promise<string[]> {
+    const urls: string[] = [];
+    for (const id of photoQueueIds) {
+        const photo = await getPhotoById(id);
+        if (!photo || photo.status !== "uploaded" || !photo.remoteKey) {
+            throw new PhotosNotReadyError();
+        }
+        urls.push(photo.remoteKey);
+    }
+    return urls;
+}
+
+export async function getActionById(id: string): Promise<QueuedAction | null> {
+    const db = await getDb();
+    const row = await db.getFirstAsync<ActionQueueRow>("SELECT * FROM action_queue WHERE id = ?", id);
+    return row ? rowToAction(row) : null;
 }
 
 export async function dispatchAction(action: QueuedAction): Promise<void> {
@@ -117,6 +173,29 @@ export async function dispatchAction(action: QueuedAction): Promise<void> {
         case "CONFIRM_ARRIVAL": {
             const { orderId } = action.payload as ActionPayloads["CONFIRM_ARRIVAL"];
             await ordersApi.confirmArrival(orderId, action.id);
+            return;
+        }
+        case "SUBMIT_PRE_CHECK": {
+            const { shipmentId, photoQueueIds, notes } = action.payload as ActionPayloads["SUBMIT_PRE_CHECK"];
+            const photoUrls = await resolvePhotoUrls(photoQueueIds);
+            await shipmentsApi.submitPreCheck(shipmentId, { photoUrls, notes }, action.id);
+            return;
+        }
+        case "SUBMIT_POST_CHECK": {
+            const { shipmentId, photoQueueIds, notes } = action.payload as ActionPayloads["SUBMIT_POST_CHECK"];
+            const photoUrls = await resolvePhotoUrls(photoQueueIds);
+            await shipmentsApi.submitPostCheck(shipmentId, { photoUrls, notes }, action.id);
+            return;
+        }
+        case "RAISE_ISSUE": {
+            const { orderId, shipmentId, reason, notes, photoQueueIds } = action.payload as ActionPayloads["RAISE_ISSUE"];
+            const photoUrls = await resolvePhotoUrls(photoQueueIds);
+            await ordersApi.raiseIssue(orderId, { shipmentId, reason, notes, photoUrls }, action.id);
+            return;
+        }
+        case "COMPLETE_ORDER": {
+            const { orderId } = action.payload as ActionPayloads["COMPLETE_ORDER"];
+            await ordersApi.complete(orderId, action.id);
             return;
         }
     }

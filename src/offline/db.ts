@@ -1,6 +1,7 @@
 import * as SQLite from "expo-sqlite";
 
 let dbInstance: SQLite.SQLiteDatabase | null = null;
+let initPromise: Promise<SQLite.SQLiteDatabase> | null = null;
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS action_queue (
@@ -24,10 +25,19 @@ CREATE TABLE IF NOT EXISTS photo_queue (
 );
 `;
 
-export async function getDb(): Promise<SQLite.SQLiteDatabase> {
-  if (dbInstance) return dbInstance;
+async function initDb(): Promise<SQLite.SQLiteDatabase> {
   const db = await SQLite.openDatabaseAsync("fleetcaring-pilot.db");
   await db.execAsync(SCHEMA);
-  dbInstance = db;
   return db;
+}
+
+export async function getDb(): Promise<SQLite.SQLiteDatabase> {
+  if (dbInstance) return dbInstance;
+  if (!initPromise) {
+    initPromise = initDb().then((db) => {
+      dbInstance = db;
+      return db;
+    });
+  }
+  return initPromise;
 }

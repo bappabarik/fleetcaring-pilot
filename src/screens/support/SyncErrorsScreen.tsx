@@ -17,6 +17,10 @@ const ACTION_LABELS: Record<QueuedAction["actionType"], string> = {
   END_BREAK: "End break",
   ENROUTE_ORDER: "Mark order enroute",
   CONFIRM_ARRIVAL: "Confirm arrival",
+  SUBMIT_PRE_CHECK: "Submit pre-check",
+  SUBMIT_POST_CHECK: "Submit post-check",
+  RAISE_ISSUE: "Raise an issue",
+  COMPLETE_ORDER: "Complete order",
 };
 
 export default function SyncErrorsScreen() {

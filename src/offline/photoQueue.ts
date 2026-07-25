@@ -1,4 +1,4 @@
-import * as FileSystem from "expo-file-system";
+import * as FileSystem from "expo-file-system/legacy";
 import { getDb } from "./db";
 import { generateIdempotencyKey } from "@/lib/uuid";
 import { uploadsApi, type UploadContentType, type UploadPurpose } from "@/api/uploads";
@@ -66,6 +66,7 @@ async function uploadOnePhoto(photo: QueuedPhoto): Promise<void> {
   });
 
   if (result.status < 200 || result.status >= 300) {
+    // console.log("R2 error body:", result.body);
     throw new Error(`Upload failed with status ${result.status}`);
   }
 
@@ -77,8 +78,11 @@ export async function drainPhotoQueue(): Promise<void> {
   for (const photo of pending) {
     try {
       await markPhotoStatus(photo.id, "uploading");
-      await uploadOnePhoto(photo);
+      const status = await uploadOnePhoto(photo);
+      console.log('upload status:: ', status);
+
     } catch (err) {
+      console.log('upload error:: ', err)
       await markPhotoStatus(photo.id, "failed", undefined, err instanceof Error ? err.message : "Upload failed");
       return;
     }

@@ -1,5 +1,19 @@
 import { apiRequest } from "./client";
 
+export const ISSUE_REASONS = [
+  "GATE_GARAGE_CLOSED",
+  "NUMBER_PLATE_NOT_MATCHING",
+  "UNABLE_TO_REACH_LOCATION",
+  "VEHICLE_NOT_AVAILABLE",
+  "VEHICLE_PARKED_UNSAFE_AREA",
+  "BY_CONTROL_CENTRE",
+  "ACCESS_DENIED_BY_SECURITY",
+  "VEHICLE_IN_PAID_PARKING",
+  "OTHER",
+] as const;
+
+export type IssueReason = (typeof ISSUE_REASONS)[number];
+
 export interface OrderShipment {
   id: string;
   shipmentNumber: string;
@@ -32,6 +46,13 @@ export interface OrderDetail {
   };
 }
 
+export interface RaiseIssueBody {
+  shipmentId?: string;
+  reason: IssueReason;
+  notes?: string;
+  photoUrls: string[];
+}
+
 export const ordersApi = {
   getById: (id: string) => apiRequest<OrderDetail>(`/orders/${id}`),
 
@@ -40,4 +61,10 @@ export const ordersApi = {
 
   confirmArrival: (orderId: string, idempotencyKey: string) =>
     apiRequest<OrderDetail>(`/orders/${orderId}/confirm-arrival`, { method: "POST", idempotencyKey }),
+
+  raiseIssue: (orderId: string, body: RaiseIssueBody, idempotencyKey: string) =>
+    apiRequest(`/orders/${orderId}/issues`, { method: "POST", body, idempotencyKey }),
+
+  complete: (orderId: string, idempotencyKey: string) =>
+    apiRequest<OrderDetail>(`/orders/${orderId}/complete`, { method: "POST", idempotencyKey }),
 };

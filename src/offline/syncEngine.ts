@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import NetInfo from "@react-native-community/netinfo";
 import { useQueryClient } from "@tanstack/react-query";
-import { getPendingActions, markActionStatus, deleteAction, dispatchAction } from "./actionQueue";
+import { getPendingActions, markActionStatus, deleteAction, dispatchAction, PhotosNotReadyError } from "./actionQueue";
 import { drainPhotoQueue } from "./photoQueue";
 import { ApiError } from "@/api/client";
 
@@ -18,6 +18,9 @@ export async function drainActionQueue(): Promise<void> {
         await dispatchAction(action);
         await deleteAction(action.id);
       } catch (err) {
+        if (err instanceof PhotosNotReadyError) {
+          continue;
+        }
         if (err instanceof ApiError) {
           await markActionStatus(action.id, "failed", err.message);
           continue;
@@ -31,8 +34,8 @@ export async function drainActionQueue(): Promise<void> {
 }
 
 async function drainEverything() {
-  await drainActionQueue();
   await drainPhotoQueue();
+  await drainActionQueue();
 }
 
 const PERIODIC_DRAIN_INTERVAL_MS = 15_000;

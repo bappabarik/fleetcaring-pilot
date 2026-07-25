@@ -54,7 +54,7 @@ export default function HomeScreen() {
     enabled: isOnDuty,
   });
 
-  console.log(todaysJobsQuery.data?.items);
+  // console.log(todaysJobsQuery.data?.items);
   
   const shiftCountdown = useCountdown(shift?.startTime ?? null);
   const breakCountdown = useCountdown(
