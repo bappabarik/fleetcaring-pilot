@@ -7,7 +7,7 @@ export interface MyShipmentTaskCard {
   order: {
     id: string;
     orderNumber: string;
-    totalAED: string;
+    total: string;
   };
   scheduledDate: string;
   scheduledStartTime: string;

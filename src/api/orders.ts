@@ -19,16 +19,16 @@ export interface OrderShipment {
   shipmentNumber: string;
   status: string;
   vehicle?: { make: string; model: string; licensePlate: string; color: string };
-  itemVariation?: { name: string; priceAED: string };
+  itemVariation?: { name: string; price: string };
   pilot?: { id: string; firstName: string; lastName: string; code: string } | null;
   asset?: { id: string; name: string; plateCode: string } | null;
-  addOns: { id: string; itemVariationId: string; priceAED: string; itemVariation?: { name: string } }[];
+  addOns: { id: string; itemVariationId: string; price: string; itemVariation?: { name: string } }[];
 }
 
 export interface OrderDetail {
   id: string;
   orderNumber: string;
-  totalAED: string;
+  total: string;
   createdAt: string;
   completedAt: string | null;
   cancelledAt: string | null;

@@ -10,10 +10,11 @@ import { authApi } from "@/api/auth";
 import { useAuthStore } from "@/store/authStore";
 import { ApiError } from "@/api/client";
 import type { AuthStackParamList } from "@/navigation/AuthNavigator";
+import { DEFAULT_COUNTRY_DIAL_CODE } from "@/config/region";
 
 type Tab = "phone" | "email";
 
-const COUNTRY_CODE = "+971";
+const COUNTRY_CODE = DEFAULT_COUNTRY_DIAL_CODE;
 
 export default function SignInScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<AuthStackParamList>>();
@@ -90,7 +91,7 @@ export default function SignInScreen() {
                   </View>
                   <Input
                     className="flex-1"
-                    placeholder="5XXXXXXXX"
+                    placeholder="Phone number"
                     keyboardType="phone-pad"
                     value={phoneNumber}
                     onChangeText={setPhoneNumber}
@@ -100,7 +101,10 @@ export default function SignInScreen() {
               <Button
                 label="Sign in"
                 loading={requestOtpMutation.isPending}
-                disabled={phoneNumber.length < 8}
+                // Loose length check, not tuned to one country's local number
+                // length — matches the backend's E.164 validation (total digits
+                // after the dial code roughly 6-14).
+                disabled={phoneNumber.length < 6}
                 onPress={() => requestOtpMutation.mutate()}
               />
             </View>
