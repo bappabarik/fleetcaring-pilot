@@ -3,6 +3,7 @@ import { generateIdempotencyKey } from "@/lib/uuid";
 import { shiftsApi, type BreakReason } from "@/api/shifts";
 import { ordersApi, type IssueReason } from "@/api/orders";
 import { shipmentsApi } from "@/api/shipments";
+import { paymentsApi } from "@/api/payments";
 import { getPhotoById } from "./photoQueue";
 
 export type ActionStatus = "pending" | "in_flight" | "failed";
@@ -24,7 +25,8 @@ export type ActionType =
     | "SUBMIT_PRE_CHECK"
     | "SUBMIT_POST_CHECK"
     | "RAISE_ISSUE"
-    | "COMPLETE_ORDER";
+    | "COMPLETE_ORDER"
+    | "COLLECT_COD";
 
 interface ActionPayloads {
     START_SHIFT: { shiftId: string };
@@ -43,6 +45,7 @@ interface ActionPayloads {
         photoQueueIds: string[];
     };
     COMPLETE_ORDER: { orderId: string };
+    COLLECT_COD: { orderId: string };
 }
 
 export interface QueuedAction<T extends ActionType = ActionType> {
@@ -196,6 +199,11 @@ export async function dispatchAction(action: QueuedAction): Promise<void> {
         case "COMPLETE_ORDER": {
             const { orderId } = action.payload as ActionPayloads["COMPLETE_ORDER"];
             await ordersApi.complete(orderId, action.id);
+            return;
+        }
+        case "COLLECT_COD": {
+            const { orderId } = action.payload as ActionPayloads["COLLECT_COD"];
+            await paymentsApi.collectCod(orderId, action.id);
             return;
         }
     }

@@ -3,3 +3,4 @@
 // .env (same EXPO_PUBLIC_ pattern already used elsewhere in this app).
 
 export const DEFAULT_COUNTRY_DIAL_CODE = process.env.EXPO_PUBLIC_DEFAULT_COUNTRY_DIAL_CODE ?? "+91";
+export const CURRENCY_SYMBOL = process.env.EXPO_PUBLIC_CURRENCY_SYMBOL ?? "₹";

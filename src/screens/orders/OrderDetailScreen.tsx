@@ -7,6 +7,7 @@ import { ordersApi } from "@/api/orders";
 import { Button } from "@/components/ui/Button";
 import { enqueueAction, getActionById } from "@/offline/actionQueue";
 import { drainActionQueue } from "@/offline/syncEngine";
+import { formatMoney } from "@/utils/format";
 import type { HomeStackParamList } from "@/navigation/HomeStackNavigator";
 
 function deriveOrderStage(statuses: string[]): "not_started" | "enroute" | "arrived" | "in_progress_or_beyond" {
@@ -37,6 +38,7 @@ export default function OrderDetailScreen() {
   const shipmentsAreTappable = stage === "arrived" || stage === "in_progress_or_beyond";
   const canRaiseIssue = stage === "arrived" || stage === "in_progress_or_beyond";
   const canComplete = stage === "in_progress_or_beyond" && allItemsResolved(statuses) && !order?.completedAt;
+  const codPendingCollection = order?.payment?.provider === "cod" && order.payment.status !== "CAPTURED";
 
   async function runQueuedAction(enqueue: () => Promise<string>) {
     const actionId = await enqueue();
@@ -69,24 +71,34 @@ export default function OrderDetailScreen() {
   }
 
   async function handleCompleteOrder() {
-    Alert.alert("Complete this order?", "Make sure every item is completed or has an issue raised first.", [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Complete",
-        onPress: async () => {
-          const actionId = await runQueuedAction(() => enqueueAction("COMPLETE_ORDER", { orderId }));
-          const stillQueued = await getActionById(actionId);
-          if (stillQueued) {
-            Alert.alert(
-              "Still syncing",
-              stillQueued.status === "failed"
-                ? stillQueued.errorMessage ?? "This couldn't be completed. Check Sync issues to retry."
-                : "You're offline — this will complete automatically once reconnected."
-            );
-          }
+    const cashAmount = order?.payment ? formatMoney(order.payment.amount) : "";
+    Alert.alert(
+      "Complete this order?",
+      codPendingCollection
+        ? `Make sure every item is completed or has an issue raised, and confirm you've collected ${cashAmount} in cash.`
+        : "Make sure every item is completed or has an issue raised first.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: codPendingCollection ? "Complete & collect cash" : "Complete",
+          onPress: async () => {
+            const actionId = await runQueuedAction(() => enqueueAction("COMPLETE_ORDER", { orderId }));
+            if (codPendingCollection) {
+              await runQueuedAction(() => enqueueAction("COLLECT_COD", { orderId }));
+            }
+            const stillQueued = await getActionById(actionId);
+            if (stillQueued) {
+              Alert.alert(
+                "Still syncing",
+                stillQueued.status === "failed"
+                  ? stillQueued.errorMessage ?? "This couldn't be completed. Check Sync issues to retry."
+                  : "You're offline — this will complete automatically once reconnected."
+              );
+            }
+          },
         },
-      },
-    ]);
+      ]
+    );
   }
 
   if (orderQuery.isLoading || !order) {
@@ -167,6 +179,13 @@ export default function OrderDetailScreen() {
 
         {(stage === "arrived" || stage === "in_progress_or_beyond") && (
           <View className="gap-3">
+            {codPendingCollection && !order.completedAt && (
+              <View className="rounded-xl bg-amber/10 p-3">
+                <Text className="text-sm font-medium text-amber">
+                  Collect {formatMoney(order.payment!.amount)} in cash on completion
+                </Text>
+              </View>
+            )}
             {!order.completedAt && (
               <Button
                 label="Complete order"

@@ -21,6 +21,7 @@ const ACTION_LABELS: Record<QueuedAction["actionType"], string> = {
   SUBMIT_POST_CHECK: "Submit post-check",
   RAISE_ISSUE: "Raise an issue",
   COMPLETE_ORDER: "Complete order",
+  COLLECT_COD: "Collect cash payment",
 };
 
 export default function SyncErrorsScreen() {

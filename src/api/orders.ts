@@ -25,6 +25,13 @@ export interface OrderShipment {
   addOns: { id: string; itemVariationId: string; price: string; itemVariation?: { name: string } }[];
 }
 
+export interface OrderPayment {
+  id: string;
+  provider: string;
+  status: "PENDING" | "HOLD_SUCCESS" | "CAPTURED" | "FAILED" | "REFUNDED";
+  amount: string;
+}
+
 export interface OrderDetail {
   id: string;
   orderNumber: string;
@@ -34,6 +41,7 @@ export interface OrderDetail {
   cancelledAt: string | null;
   notes: { id: string; authorType: string; text: string }[];
   shipments: OrderShipment[];
+  payment?: OrderPayment | null;
   user?: { id: string; name: string | null; phoneNumber: string };
   address?: {
     id: string;
