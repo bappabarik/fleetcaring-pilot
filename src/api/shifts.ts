@@ -1,6 +1,6 @@
 import { apiRequest } from "./client";
 
-export type ShiftStatus = "SCHEDULED" | "IN_PROGRESS" | "COMPLETED" | "CANCELLED";
+export type ShiftStatus = "SCHEDULED" | "IN_PROGRESS" | "COMPLETED" | "CANCELLED" | "NO_SHOW";
 export type DashboardState = "NO_SHIFT" | "SHIFT_SCHEDULED" | "ON_DUTY" | "ON_BREAK";
 export type BreakReason = "LUNCH_BREAK" | "ACCIDENT" | "MECHANICAL_ISSUE" | "SICKNESS" | "RETURN_TO_DEPOT" | "OTHER";
 
