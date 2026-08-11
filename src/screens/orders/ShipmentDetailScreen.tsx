@@ -8,7 +8,8 @@ import { ordersApi } from "@/api/orders";
 import { Button } from "@/components/ui/Button";
 import { PhotoCaptureGrid, type CapturedPhoto } from "@/components/orders/PhotoCaptureGrid";
 import { enqueueAction, getActionById, hasPendingActionMatching } from "@/offline/actionQueue";
-import { drainActionQueue } from "@/offline/syncEngine";
+import { drainEverything } from "@/offline/syncEngine";
+import { useSyncStatus } from "@/offline/useSyncStatus";
 import type { HomeStackParamList } from "@/navigation/HomeStackNavigator";
 
 const MIN_PHOTOS = 2;
@@ -18,6 +19,7 @@ export default function ShipmentDetailScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<HomeStackParamList>>();
   const queryClient = useQueryClient();
   const { orderId, shipmentId } = route.params;
+  const { pendingCount, uploadingPhotoCount, failedPhotoCount } = useSyncStatus();
 
   const [preCheckPhotos, setPreCheckPhotos] = useState<CapturedPhoto[]>([]);
   const [preCheckNotes, setPreCheckNotes] = useState("");
@@ -47,7 +49,7 @@ export default function ShipmentDetailScreen() {
               (p) => p.shipmentId === shipmentId
             );
             if (alreadyQueued) {
-              await drainActionQueue();
+              await drainEverything();
               queryClient.invalidateQueries({ queryKey: ["order", orderId] });
               return;
             }
@@ -57,7 +59,7 @@ export default function ShipmentDetailScreen() {
               photoQueueIds: preCheckPhotos.map((p) => p.queueId),
               notes: preCheckNotes || undefined,
             });
-            await drainActionQueue();
+            await drainEverything();
             queryClient.invalidateQueries({ queryKey: ["order", orderId] });
 
             const stillQueued = await getActionById(actionId);
@@ -92,7 +94,7 @@ export default function ShipmentDetailScreen() {
               (p) => p.shipmentId === shipmentId
             );
             if (alreadyQueued) {
-              await drainActionQueue();
+              await drainEverything();
               queryClient.invalidateQueries({ queryKey: ["order", orderId] });
               queryClient.invalidateQueries({ queryKey: ["my-shipments"] });
               return;
@@ -103,7 +105,7 @@ export default function ShipmentDetailScreen() {
               photoQueueIds: postCheckPhotos.map((p) => p.queueId),
               notes: postCheckNotes || undefined,
             });
-            await drainActionQueue();
+            await drainEverything();
             queryClient.invalidateQueries({ queryKey: ["order", orderId] });
             queryClient.invalidateQueries({ queryKey: ["my-shipments"] });
 
@@ -142,7 +144,29 @@ export default function ShipmentDetailScreen() {
         <Text className="mb-1 text-xl font-bold text-ink">
           {shipment.vehicle ? `${shipment.vehicle.make} ${shipment.vehicle.model}` : "Vehicle"}
         </Text>
-        <Text className="mb-6 text-sm text-slate-dark">{shipment.itemVariation?.name}</Text>
+        <Text className="mb-4 text-sm text-slate-dark">{shipment.itemVariation?.name}</Text>
+
+        {/* Ongoing feedback right where the pilot is actually looking —
+            without this, tapping Confirm goes quiet for however long the
+            upload takes with nothing on screen to show it's still
+            working, which is exactly what leads to re-tapping. */}
+        {failedPhotoCount > 0 && (
+          <Text
+            onPress={() => navigation.navigate("SyncErrors")}
+            className="mb-4 rounded-lg bg-rust/10 px-3 py-2 text-center text-sm font-medium text-rust"
+          >
+            {failedPhotoCount} photo{failedPhotoCount > 1 ? "s" : ""} couldn't upload — tap to retry
+          </Text>
+        )}
+        {failedPhotoCount === 0 && (uploadingPhotoCount > 0 || pendingCount > 0) && (
+          <View className="mb-4 flex-row items-center justify-center gap-2 rounded-lg bg-amber/10 px-3 py-2">
+            <Text className="text-center text-sm font-medium text-amber">
+              {uploadingPhotoCount > 0
+                ? `Uploading ${uploadingPhotoCount} photo${uploadingPhotoCount > 1 ? "s" : ""}…`
+                : "Syncing…"}
+            </Text>
+          </View>
+        )}
 
         {shipment.status === "ARRIVED" && (
           <View className="gap-4">

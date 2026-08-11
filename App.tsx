@@ -1,6 +1,7 @@
 // @ts-expect-error — CSS side-effect import, handled by Metro's own
 // bundler transform at build time; not something tsc needs to type.
 import "./global.css";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { StatusBar } from "expo-status-bar";
 import { RootNavigator } from "@/navigation/RootNavigator";
@@ -22,10 +23,14 @@ function SyncEngineMount() {
 
 export default function App() {
   return (
-    <QueryClientProvider client={queryClient}>
-      <StatusBar style="dark" />
-      <SyncEngineMount />
-      <RootNavigator />
-    </QueryClientProvider>
+    // Required root wrapper for react-native-gesture-handler — without
+    // it, gestures (SwipeToConfirm) silently fail to register on Android.
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <QueryClientProvider client={queryClient}>
+        <StatusBar style="dark" />
+        <SyncEngineMount />
+        <RootNavigator />
+      </QueryClientProvider>
+    </GestureHandlerRootView>
   );
 }

@@ -8,7 +8,8 @@ import { ISSUE_REASONS, type IssueReason } from "@/api/orders";
 import { Button } from "@/components/ui/Button";
 import { PhotoCaptureGrid, type CapturedPhoto } from "@/components/orders/PhotoCaptureGrid";
 import { enqueueAction, getActionById } from "@/offline/actionQueue";
-import { drainActionQueue } from "@/offline/syncEngine";
+import { drainEverything } from "@/offline/syncEngine";
+import { useSyncStatus } from "@/offline/useSyncStatus";
 import type { HomeStackParamList } from "@/navigation/HomeStackNavigator";
 
 const MIN_PHOTOS = 2;
@@ -30,6 +31,7 @@ export default function RaiseIssueScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<HomeStackParamList>>();
   const queryClient = useQueryClient();
   const { orderId, shipmentId } = route.params;
+  const { pendingCount, uploadingPhotoCount, failedPhotoCount } = useSyncStatus();
 
   const [reasonPickerOpen, setReasonPickerOpen] = useState(false);
   const [reason, setReason] = useState<IssueReason | null>(null);
@@ -51,7 +53,10 @@ export default function RaiseIssueScreen() {
         notes: notes || undefined,
         photoQueueIds: photos.map((p) => p.queueId),
       });
-      await drainActionQueue();
+      // drainEverything (not just drainActionQueue) so the photo upload
+      // is actually pushed right now instead of passively waiting for
+      // the next background tick.
+      await drainEverything();
       queryClient.invalidateQueries({ queryKey: ["order", orderId] });
       queryClient.invalidateQueries({ queryKey: ["my-shipments"] });
 
@@ -78,7 +83,23 @@ export default function RaiseIssueScreen() {
           ←
         </Text>
 
-        <Text className="mb-6 text-xl font-bold text-ink">Raise an issue</Text>
+        <Text className="mb-4 text-xl font-bold text-ink">Raise an issue</Text>
+
+        {failedPhotoCount > 0 && (
+          <Text
+            onPress={() => navigation.navigate("SyncErrors")}
+            className="mb-4 rounded-lg bg-rust/10 px-3 py-2 text-center text-sm font-medium text-rust"
+          >
+            {failedPhotoCount} photo{failedPhotoCount > 1 ? "s" : ""} couldn't upload — tap to retry
+          </Text>
+        )}
+        {failedPhotoCount === 0 && (uploadingPhotoCount > 0 || pendingCount > 0) && (
+          <Text className="mb-4 rounded-lg bg-amber/10 px-3 py-2 text-center text-sm font-medium text-amber">
+            {uploadingPhotoCount > 0
+              ? `Uploading ${uploadingPhotoCount} photo${uploadingPhotoCount > 1 ? "s" : ""}…`
+              : "Syncing…"}
+          </Text>
+        )}
 
         <Text className="mb-1.5 text-sm font-medium text-slate-dark">Select reason</Text>
         <Pressable

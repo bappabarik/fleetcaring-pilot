@@ -33,7 +33,16 @@ export async function drainActionQueue(): Promise<void> {
   }
 }
 
-async function drainEverything() {
+/**
+ * Drains photos THEN actions, in that order. Any screen that just
+ * enqueued a photo-carrying action (pre-check, post-check, raise issue)
+ * should call this instead of drainActionQueue() alone — otherwise the
+ * action just checks "are the photos already uploaded?", finds they
+ * aren't yet, and silently waits for the next periodic background tick
+ * (up to PERIODIC_DRAIN_INTERVAL_MS later) instead of actually pushing
+ * the upload right now.
+ */
+export async function drainEverything(): Promise<void> {
   await drainPhotoQueue();
   await drainActionQueue();
 }

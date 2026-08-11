@@ -46,6 +46,27 @@ export async function getPendingPhotos(): Promise<QueuedPhoto[]> {
   );
 }
 
+/** Everything not yet successfully uploaded — used to show "still
+ * syncing" feedback on whatever screen the pilot is actually looking at,
+ * not just the Home screen. */
+export async function getUnresolvedPhotos(): Promise<QueuedPhoto[]> {
+  const db = await getDb();
+  return db.getAllAsync<QueuedPhoto>(
+    "SELECT * FROM photo_queue WHERE status IN ('pending', 'uploading', 'failed') ORDER BY createdAt ASC"
+  );
+}
+
+export async function getFailedPhotos(): Promise<QueuedPhoto[]> {
+  const db = await getDb();
+  return db.getAllAsync<QueuedPhoto>("SELECT * FROM photo_queue WHERE status = 'failed' ORDER BY createdAt ASC");
+}
+
+/** Puts a failed photo back in line to be retried on the next drain —
+ * mirrors retryAction()'s role for the action queue. */
+export async function retryPhoto(id: string): Promise<void> {
+  await markPhotoStatus(id, "pending");
+}
+
 async function markPhotoStatus(id: string, status: PhotoStatus, remoteKey?: string, errorMessage?: string) {
   const db = await getDb();
   await db.runAsync(
@@ -78,13 +99,15 @@ export async function drainPhotoQueue(): Promise<void> {
   for (const photo of pending) {
     try {
       await markPhotoStatus(photo.id, "uploading");
-      const status = await uploadOnePhoto(photo);
-      console.log('upload status:: ', status);
-
+      await uploadOnePhoto(photo);
     } catch (err) {
-      console.log('upload error:: ', err)
+      // Mark this one failed and move on to the NEXT pending photo rather
+      // than bailing out of the whole batch — a single persistently-bad
+      // photo (corrupt file, expired presign, etc.) shouldn't be able to
+      // block every other photo behind it, forever, on every drain cycle.
+      // This one stays "failed" and gets picked up again on the next
+      // drainPhotoQueue() call (getPendingPhotos selects pending+failed).
       await markPhotoStatus(photo.id, "failed", undefined, err instanceof Error ? err.message : "Upload failed");
-      return;
     }
   }
 }

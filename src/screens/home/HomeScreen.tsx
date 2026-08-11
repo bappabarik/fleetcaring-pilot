@@ -17,13 +17,16 @@ import { useSyncStatus } from "@/offline/useSyncStatus";
 import { useLocationPing } from "@/realtime/useLocationPing";
 import { useCountdown, formatHoursMinutes, formatShiftDateTime, COUNTDOWN_DISPLAY_THRESHOLD_MS } from "@/lib/countdown";
 import { todayIsoDate } from "@/lib/date";
+import { groupTasksByOrder } from "@/lib/groupTasksByOrder";
 import type { HomeStackParamList } from "@/navigation/HomeStackNavigator";
 
 export default function HomeScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<HomeStackParamList>>();
   const queryClient = useQueryClient();
   const [breakModalVisible, setBreakModalVisible] = useState(false);
-  const { pendingCount, failedCount } = useSyncStatus();
+  const { pendingCount, failedCount, uploadingPhotoCount, failedPhotoCount } = useSyncStatus();
+  const totalFailed = failedCount + failedPhotoCount;
+  const totalSyncing = pendingCount + uploadingPhotoCount;
 
   const profileQuery = useQuery({ queryKey: ["pilot-profile"], queryFn: pilotsApi.getMe });
 
@@ -43,6 +46,11 @@ export default function HomeScreen() {
     queryKey: ["my-shipments", todayIsoDate()],
     queryFn: () => shipmentsApi.listMine({ date: todayIsoDate(), limit: 50 }),
     enabled: isOnDuty,
+    // Same cadence as the dashboard query above — without this, a newly
+    // assigned job only shows up once the pilot manually leaves and
+    // re-enters this screen. No websocket for order data (that's reserved
+    // for live location pings only), so polling is the mechanism here.
+    refetchInterval: 20_000,
   });
 
   const shiftCountdown = useCountdown(shift?.startTime ?? null);
@@ -157,24 +165,38 @@ export default function HomeScreen() {
               </View>
             ) : (
               <View className="gap-2">
-                {todaysJobsQuery.data.items.map((task) => (
+                {groupTasksByOrder(todaysJobsQuery.data.items).map((group) => (
                   <Pressable
-                    key={task.shipmentId}
-                    onPress={() => navigation.navigate("OrderDetail", { orderId: task.order.id })}
+                    key={group.orderId}
+                    onPress={() => navigation.navigate("OrderDetail", { orderId: group.orderId })}
                     className="rounded-xl border border-slate-light/60 p-3"
                   >
-                    <Text className="font-medium text-ink">{task.service.opItemName}</Text>
-                    <Text className="text-xs text-slate-dark">
-                      {new Date(task.scheduledStartTime).toLocaleTimeString(undefined, {
+                    <View className="flex-row items-center justify-between">
+                      <Text className="font-medium text-ink">{group.serviceName}</Text>
+                      {group.tasks.length > 1 && (
+                        <View className="rounded-full bg-indigo/10 px-2 py-0.5">
+                          <Text className="text-xs font-semibold text-indigo">{group.tasks.length} vehicles</Text>
+                        </View>
+                      )}
+                    </View>
+                    <Text className="mt-0.5 text-xs text-slate-dark">
+                      {new Date(group.scheduledStartTime).toLocaleTimeString(undefined, {
                         hour: "numeric",
                         minute: "2-digit",
                       })}
                       {" – "}
-                      {new Date(task.scheduledEndTime).toLocaleTimeString(undefined, {
+                      {new Date(group.scheduledEndTime).toLocaleTimeString(undefined, {
                         hour: "numeric",
                         minute: "2-digit",
                       })}
+                      {" · "}
+                      {group.addressLabel}
                     </Text>
+                    {group.tasks.length > 1 && (
+                      <Text className="mt-1 text-xs text-slate-dark" numberOfLines={1}>
+                        {group.tasks.map((t) => `${t.vehicle.make} ${t.vehicle.model}`).join(", ")}
+                      </Text>
+                    )}
                   </Pressable>
                 ))}
               </View>
@@ -221,17 +243,17 @@ export default function HomeScreen() {
           </View>
         )}
 
-        {failedCount > 0 && (
+        {totalFailed > 0 && (
           <Text
             onPress={() => navigation.navigate("SyncErrors")}
             className="mb-3 rounded-lg bg-rust/10 px-3 py-2 text-center text-sm font-medium text-rust"
           >
-            {failedCount} action{failedCount > 1 ? "s" : ""} need attention — tap to review
+            {totalFailed} item{totalFailed > 1 ? "s" : ""} need attention — tap to review
           </Text>
         )}
-        {failedCount === 0 && pendingCount > 0 && (
+        {totalFailed === 0 && totalSyncing > 0 && (
           <Text className="mb-3 rounded-lg bg-amber/10 px-3 py-2 text-center text-sm font-medium text-amber">
-            Syncing {pendingCount} action{pendingCount > 1 ? "s" : ""}…
+            Syncing {totalSyncing} item{totalSyncing > 1 ? "s" : ""}…
           </Text>
         )}
 

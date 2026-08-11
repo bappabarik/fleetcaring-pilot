@@ -5,6 +5,7 @@ import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ordersApi } from "@/api/orders";
 import { Button } from "@/components/ui/Button";
+import { SwipeToConfirm } from "@/components/ui/SwipeToConfirm";
 import { enqueueAction, getActionById } from "@/offline/actionQueue";
 import { drainActionQueue } from "@/offline/syncEngine";
 import { formatMoney } from "@/utils/format";
@@ -48,21 +49,16 @@ export default function OrderDetailScreen() {
     return actionId;
   }
 
+  // No Alert confirmation here on purpose — the swipe gesture itself
+  // (SwipeToConfirm, dragged deliberately across the track) IS the
+  // confirmation. Stacking a tap-through dialog on top of it would just
+  // be a second confirmation for the same action.
   function handleEnroute() {
-    Alert.alert("Start this order?", "This marks you as on the way to the customer.", [
-      { text: "Cancel", style: "cancel" },
-      { text: "Enroute", onPress: () => runQueuedAction(() => enqueueAction("ENROUTE_ORDER", { orderId })) },
-    ]);
+    runQueuedAction(() => enqueueAction("ENROUTE_ORDER", { orderId }));
   }
 
   function handleConfirmArrival() {
-    Alert.alert("Confirm arrival?", "Only confirm once you're actually at the location.", [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Confirm",
-        onPress: () => runQueuedAction(() => enqueueAction("CONFIRM_ARRIVAL", { orderId })),
-      },
-    ]);
+    runQueuedAction(() => enqueueAction("CONFIRM_ARRIVAL", { orderId }));
   }
 
   function handleCallCustomer() {
@@ -168,11 +164,11 @@ export default function OrderDetailScreen() {
           })}
         </View>
 
-        {stage === "not_started" && <Button label="Enroute" onPress={handleEnroute} />}
+        {stage === "not_started" && <SwipeToConfirm label="Swipe to start — Enroute" onConfirm={handleEnroute} />}
 
         {stage === "enroute" && (
           <View className="gap-3">
-            <Button label="Confirm arrival" onPress={handleConfirmArrival} />
+            <SwipeToConfirm label="Swipe to confirm arrival" onConfirm={handleConfirmArrival} />
             <Button label="Contact customer" variant="secondary" onPress={handleCallCustomer} />
           </View>
         )}

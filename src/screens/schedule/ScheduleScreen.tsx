@@ -3,7 +3,8 @@ import { View, Text, Pressable, ScrollView } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useQuery } from "@tanstack/react-query";
 import { shiftsApi, type Shift } from "@/api/shifts";
-import { shipmentsApi, type MyShipmentTaskCard } from "@/api/shipments";
+import { shipmentsApi } from "@/api/shipments";
+import { groupTasksByOrder } from "@/lib/groupTasksByOrder";
 
 type Tab = "daily" | "weekly";
 
@@ -40,6 +41,9 @@ export default function ScheduleScreen() {
     queryKey: ["my-shipments", today],
     queryFn: () => shipmentsApi.listMine({ date: today, limit: 50 }),
     enabled: tab === "daily",
+    // Matches HomeScreen's own jobs query — same reasoning, polling since
+    // there's no websocket for order data.
+    refetchInterval: 20_000,
   });
 
   const sortedShifts = useMemo(
@@ -49,13 +53,16 @@ export default function ScheduleScreen() {
 
   const todaysShift = sortedShifts.find((s) => isSameDay(s.startTime, today));
 
-  const shipmentsForToday = useMemo(
-    () =>
-      [...(shipmentsQuery.data?.items ?? [])].sort((a, b) =>
-        a.scheduledStartTime.localeCompare(b.scheduledStartTime)
-      ),
-    [shipmentsQuery.data]
-  );
+  // Grouped by order — one order can hold several vehicles (multiple
+  // shipments) for the same customer/address/timeslot, and should read
+  // as one entry on the timeline, not one per vehicle. Mirrors
+  // HomeScreen's own "Today's jobs" list so the two screens agree.
+  const taskGroupsForToday = useMemo(() => {
+    const sorted = [...(shipmentsQuery.data?.items ?? [])].sort((a, b) =>
+      a.scheduledStartTime.localeCompare(b.scheduledStartTime)
+    );
+    return groupTasksByOrder(sorted);
+  }, [shipmentsQuery.data]);
 
   const shiftsByDate = useMemo(() => {
     const groups = new Map<string, Shift[]>();
@@ -112,20 +119,32 @@ export default function ScheduleScreen() {
             <View className="mt-2">
               {shipmentsQuery.isLoading ? (
                 <Text className="text-center text-sm text-slate-dark">Loading jobs…</Text>
-              ) : shipmentsForToday.length === 0 ? (
+              ) : taskGroupsForToday.length === 0 ? (
                 <Text className="text-center text-sm text-slate-dark">No jobs scheduled today</Text>
               ) : (
-                shipmentsForToday.map((task, index) => (
-                  <View key={task.shipmentId} className="flex-row gap-3">
+                taskGroupsForToday.map((group, index) => (
+                  <View key={group.orderId} className="flex-row gap-3">
                     <View className="items-center">
                       <View className="mt-1.5 h-2.5 w-2.5 rounded-full bg-indigo" />
-                      {index < shipmentsForToday.length - 1 && <View className="w-px flex-1 bg-slate-light" />}
+                      {index < taskGroupsForToday.length - 1 && <View className="w-px flex-1 bg-slate-light" />}
                     </View>
                     <View className="mb-4 flex-1 rounded-xl border border-slate-light/60 p-3">
-                      <Text className="text-xs font-semibold uppercase text-indigo">{task.service.opItemName}</Text>
+                      <View className="flex-row items-center justify-between">
+                        <Text className="text-xs font-semibold uppercase text-indigo">{group.serviceName}</Text>
+                        {group.tasks.length > 1 && (
+                          <View className="rounded-full bg-indigo/10 px-2 py-0.5">
+                            <Text className="text-xs font-semibold text-indigo">{group.tasks.length} vehicles</Text>
+                          </View>
+                        )}
+                      </View>
                       <Text className="text-sm text-ink">
-                        {formatTime(task.scheduledStartTime)} – {formatTime(task.scheduledEndTime)}
+                        {formatTime(group.scheduledStartTime)} – {formatTime(group.scheduledEndTime)}
                       </Text>
+                      {group.tasks.length > 1 && (
+                        <Text className="mt-1 text-xs text-slate-dark" numberOfLines={1}>
+                          {group.tasks.map((t) => `${t.vehicle.make} ${t.vehicle.model}`).join(", ")}
+                        </Text>
+                      )}
                     </View>
                   </View>
                 ))
