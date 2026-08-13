@@ -8,17 +8,18 @@
     "ios": {
       "supportsTablet": false,
       "infoPlist": {
-        "NSLocationWhenInUseUsageDescription": "FleetCaring needs your location while on duty so dispatch can route jobs to you and customers can see your ETA.",
-        "NSCameraUsageDescription": "FleetCaring needs camera access to capture pre/post-service vehicle photos."
+        "NSCameraUsageDescription": "FleetCaring needs camera access to capture pre/post-service vehicle photos.",
+        "UIBackgroundModes": ["location"]
       }
     },
     "android": {
       "permissions": [
         "ACCESS_FINE_LOCATION",
         "ACCESS_COARSE_LOCATION",
-        "CAMERA",
-        "android.permission.ACCESS_COARSE_LOCATION",
-        "android.permission.ACCESS_FINE_LOCATION"
+        "ACCESS_BACKGROUND_LOCATION",
+        "FOREGROUND_SERVICE",
+        "FOREGROUND_SERVICE_LOCATION",
+        "CAMERA"
       ],
       "package": "com.fleetcaring.fleetcaringpilot"
     },
@@ -26,7 +27,11 @@
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "FleetCaring needs your location while on duty so dispatch can route jobs to you."
+          "locationWhenInUsePermission": "FleetCaring needs your location while on duty so dispatch can route jobs to you.",
+          "locationAlwaysAndWhenInUsePermission": "FleetCaring tracks your location during your shift — including in the background — so dispatch can route jobs to you and customers can see your ETA. It stops the moment you end your shift.",
+          "isIosBackgroundLocationEnabled": true,
+          "isAndroidBackgroundLocationEnabled": true,
+          "isAndroidForegroundServiceEnabled": true
         }
       ],
       "expo-secure-store"

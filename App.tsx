@@ -6,6 +6,12 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { StatusBar } from "expo-status-bar";
 import { RootNavigator } from "@/navigation/RootNavigator";
 import { useSyncEngine } from "@/offline/syncEngine";
+// Side-effect import — registers the background location task via
+// TaskManager.defineTask. Must happen at module scope on every launch
+// (including OS-triggered background launches) so the task definition
+// exists before the OS tries to invoke it; it can't be deferred into a
+// component's render.
+import "@/realtime/locationTask";
 
 const queryClient = new QueryClient({
   defaultOptions: {
